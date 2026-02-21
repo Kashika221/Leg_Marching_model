@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seated Leg March Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0f14;
+      --surface: #161b25;
+      --card:    #1e2636;
+      --border:  #2a3347;
+      --accent:  #4f8ef7;
+      --green:   #23d18b;
+      --red:     #f25c5c;
+      --muted:   #8892a4;
+      --text:    #e8eaf0;
+      --radius:  14px;
+      --shadow:  0 8px 32px rgba(0,0,0,.45);
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 60px;
+      gap: 24px;
+    }
+
+    header { text-align: center; }
+    header h1 {
+      font-size: 2rem; font-weight: 700; letter-spacing: -.5px;
+      background: linear-gradient(135deg, var(--accent), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    header p { color: var(--muted); margin-top: 6px; font-size: .95rem; }
+
+    #login-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 36px 40px; width: 100%; max-width: 440px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    #login-card h2 { font-size: 1.2rem; }
+    label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 6px; }
+    input[type="text"] {
+      width: 100%; padding: 12px 16px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); font-size: 1rem; outline: none;
+      transition: border-color .2s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+
+    #cam-banner {
+      display: none;
+      background: #1a2235; border: 1px solid var(--accent);
+      border-radius: 10px; padding: 14px 18px;
+      font-size: .88rem; color: var(--text);
+      align-items: center; gap: 12px;
+      max-width: 440px; width: 100%;
+    }
+    #cam-banner span { font-size: 1.4rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 12px 22px; border-radius: 8px; border: none;
+      cursor: pointer; font-size: .95rem; font-weight: 600;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-green   { background: var(--green);  color: #000; }
+    .btn-red     { background: var(--red);    color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+    #main-view {
+      display: none; width: 100%; max-width: 1100px;
+      flex-direction: column; gap: 24px;
+    }
+
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .user-pill {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--card); border: 1px solid var(--border);
+      padding: 8px 18px; border-radius: 100px;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.live { background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    #ws-badge {
+      font-size: .72rem; color: var(--muted);
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 3px 10px; border-radius: 100px;
+      transition: color .3s;
+    }
+    #ws-badge.fast { color: var(--green); border-color: var(--green); }
+    #ws-badge.slow { color: var(--red);   border-color: var(--red);   }
+
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px;
+    }
+    .card h3 {
+      font-size: .78rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); margin-bottom: 14px;
+    }
+
+    #video-wrapper {
+      position: relative; border-radius: 10px; overflow: hidden;
+      background: #0a0c10; aspect-ratio: 4/3;
+    }
+    #raw-video { display: none; }
+    #overlay-canvas { width: 100%; height: 100%; display: block; }
+
+    #cam-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      color: var(--muted); font-size: .9rem;
+    }
+    #cam-placeholder .icon { font-size: 2.5rem; }
+
+    #perm-overlay {
+      position: absolute; inset: 0;
+      background: rgba(13,15,20,.9);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; text-align: center; padding: 24px;
+      border-radius: 10px;
+    }
+    #perm-overlay .perm-icon { font-size: 3rem; }
+    #perm-overlay p { color: var(--muted); font-size: .88rem; max-width: 280px; }
+
+    .stat-row { display: flex; gap: 14px; }
+    .stat-box {
+      flex: 1; background: var(--surface); border-radius: 10px;
+      padding: 16px; text-align: center;
+    }
+    .stat-box .value { font-size: 2.4rem; font-weight: 700; color: var(--green); line-height: 1; }
+    .stat-box .lbl   { font-size: .72rem; color: var(--muted); margin-top: 6px;
+                       text-transform: uppercase; letter-spacing: .6px; }
+
+    #feedback-box {
+      margin-top: 14px; padding: 14px 18px;
+      background: var(--surface); border-left: 3px solid var(--accent);
+      border-radius: 8px; font-size: .95rem; min-height: 52px;
+      display: flex; align-items: center;
+    }
+
+    .progress-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+    .p-stat { background: var(--surface); border-radius: 10px; padding: 14px; text-align: center; }
+    .p-stat .pval { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+    .p-stat .plbl { font-size: .72rem; color: var(--muted); text-transform: uppercase;
+                    letter-spacing: .5px; margin-top: 4px; }
+
+    #history-list {
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: 260px; overflow-y: auto;
+    }
+    .hi {
+      display: flex; justify-content: space-between; align-items: center;
+      background: var(--surface); border-radius: 8px; padding: 10px 14px; font-size: .85rem;
+    }
+    .hi .reps  { font-weight: 700; color: var(--green); }
+    .hi .date  { color: var(--muted); font-size: .75rem; }
+    .hi .dur   { color: var(--muted); }
+
+    #toast {
+      position: fixed; bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 24px;
+      font-size: .9rem; opacity: 0; pointer-events: none;
+      transition: opacity .3s, transform .3s; z-index: 9999;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Seated Leg March Tracker</h1>
+  <p>AI-powered rep counter with real-time pose detection</p>
+</header>
+
+<div id="login-card">
+  <h2>Enter your User ID</h2>
+  <div>
+    <label for="uid-input">User ID</label>
+    <input type="text" id="uid-input" placeholder="e.g. alice_123" autocomplete="off" />
+  </div>
+  <button class="btn btn-primary" onclick="enterApp()">Continue →</button>
+  <p style="font-size:.8rem;color:var(--muted);text-align:center">
+    Progress is saved automatically to the database.
+  </p>
+</div>
+
+<div id="cam-banner">
+  <span>📷</span>
+  <div>This app needs your camera to detect leg movements. You will be asked to grant permission when you start a session.</div>
+</div>
+
+<!-- ── Main view ── -->
+<div id="main-view">
+
+  <div class="top-bar">
+    <div class="user-pill">
+      <div class="dot" id="status-dot"></div>
+      <span id="uid-display">—</span>
+    </div>
+    <div class="controls">
+      <span id="ws-badge">WS —</span>
+      <button class="btn btn-green"   id="btn-start" onclick="startSession()">▶ Start Session</button>
+      <button class="btn btn-red"     id="btn-stop"  onclick="stopSession()" disabled>⏹ Stop &amp; Save</button>
+      <button class="btn btn-outline"                onclick="loadProgress()">Refresh Progress</button>
+      <button class="btn btn-outline"                onclick="logout()">← Logout</button>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div class="card">
+        <h3>Live Camera</h3>
+        <div id="video-wrapper">
+          <video id="raw-video" autoplay muted playsinline></video>
+          <canvas id="overlay-canvas"></canvas>
+          <div id="cam-placeholder">
+            <div class="icon">🎥</div>
+            <div>Press <strong>Start Session</strong> to enable your camera</div>
+          </div>
+          <div id="perm-overlay">
+            <div class="perm-icon">🔐</div>
+            <strong>Camera Access Required</strong>
+            <p>Please allow camera access in your browser popup to start tracking.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Live Stats</h3>
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="value" id="live-reps">—</div>
+            <div class="lbl">Reps</div>
+          </div>
+          <div class="stat-box">
+            <div class="value" id="live-time">—</div>
+            <div class="lbl">Seconds</div>
+          </div>
+        </div>
+        <div id="feedback-box">Start a session to begin exercising.</div>
+      </div>
+
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <div class="card">
+        <h3>All-Time Progress</h3>
+        <div class="progress-grid">
+          <div class="p-stat"><div class="pval" id="p-reps">—</div><div class="plbl">Total Reps</div></div>
+          <div class="p-stat"><div class="pval" id="p-dur">—</div><div class="plbl">Total Secs</div></div>
+          <div class="p-stat"><div class="pval" id="p-sess">—</div><div class="plbl">Sessions</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="flex:1">
+        <h3>Session History</h3>
+        <div id="history-list">
+          <p style="color:var(--muted);font-size:.85rem">No history yet.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const HTTP_API = "http://localhost:8000";
+const WS_API   = "ws://localhost:8000";
+
+const POSE_CONNECTIONS = [
+  [11,12],[11,13],[13,15],[12,14],[14,16],
+  [11,23],[12,24],[23,24],
+  [23,25],[25,27],[27,29],[29,31],
+  [24,26],[26,28],[28,30],[30,32],
+];
+const HIGHLIGHT_JOINTS = new Set([23,24,25,26,27,28]);
+
+let userId        = null;
+let active        = false;
+let stream        = null;
+let rafId         = null;
+let ws            = null;      
+let wsReady       = false;     
+let frameCapCanvas = null;     
+let lastLandmarks  = [];
+let lastPingMs     = null;
+let frameSent      = 0;       
+let frameCount     = 0;        
+
+const video  = document.getElementById("raw-video");
+const canvas = document.getElementById("overlay-canvas");
+const ctx    = canvas.getContext("2d");
+
+function toast(msg, ms = 2800) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), ms);
+}
+
+function enterApp() {
+  const v = document.getElementById("uid-input").value.trim();
+  if (!v) { toast("Enter a User ID first."); return; }
+  userId = v;
+  document.getElementById("uid-display").textContent = "👤 " + userId;
+  document.getElementById("login-card").style.display = "none";
+  document.getElementById("cam-banner").style.display = "flex";
+  document.getElementById("main-view").style.display  = "flex";
+  loadProgress();
+}
+
+function logout() {
+  if (active) stopSession();
+  userId = null;
+  document.getElementById("login-card").style.display = "flex";
+  document.getElementById("cam-banner").style.display = "none";
+  document.getElementById("main-view").style.display  = "none";
+  document.getElementById("uid-input").value = "";
+  resetUI();
+}
+
+async function requestCamera() {
+  document.getElementById("perm-overlay").style.display = "flex";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById("perm-overlay").style.display = "none";
+    document.getElementById("cam-placeholder").style.display = "none";
+
+    frameCapCanvas = document.createElement("canvas");
+    return true;
+  } catch (err) {
+    document.getElementById("perm-overlay").style.display = "none";
+    toast(err.name === "NotAllowedError"
+      ? "Camera permission denied."
+      : "Could not access camera: " + err.message, 4000);
+    return false;
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  document.getElementById("cam-placeholder").style.display = "flex";
+}
+
+function openWebSocket() {
+  return new Promise((resolve, reject) => {
+    ws = new WebSocket(`${WS_API}/ws/${userId}`);
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+      wsReady = true;
+      updateWsBadge(0);
+      resolve();
+    };
+
+    ws.onmessage = (evt) => {
+      const t1 = performance.now();
+      const d = JSON.parse(evt.data);
+
+      if (d.error) {
+        toast("Server: " + d.error, 4000);
+        return;
+      }
+
+      document.getElementById("live-reps").textContent = d.reps;
+      document.getElementById("live-time").textContent = d.elapsed;
+      document.getElementById("feedback-box").textContent = d.feedback;
+
+      if (d.landmarks && d.landmarks.length === 33) {
+        lastLandmarks = d.landmarks;
+      }
+
+      if (ws._sendTs) {
+        const rtt = Math.round(performance.now() - ws._sendTs);
+        updateWsBadge(rtt);
+      }
+
+      wsReady = true;
+    };
+
+    ws.onerror  = (e) => { console.error("[WS] error", e); reject(e); };
+    ws.onclose  = () => { wsReady = false; updateWsBadge(null); };
+  });
+}
+
+function closeWebSocket() {
+  if (ws) { ws.close(); ws = null; wsReady = false; }
+}
+
+function updateWsBadge(rttMs) {
+  const el = document.getElementById("ws-badge");
+  if (rttMs === null) { el.textContent = "⚡ WS —"; el.className = ""; return; }
+  el.textContent = `⚡ ${rttMs} ms`;
+  el.className   = rttMs < 80 ? "ws-badge fast" : rttMs < 200 ? "ws-badge" : "ws-badge slow";
+}
+
+function drawLoop() {
+  if (!active) return;
+  rafId = requestAnimationFrame(drawLoop);
+
+  if (video.videoWidth && canvas.width !== video.videoWidth) {
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    frameCapCanvas.width  = video.videoWidth;
+    frameCapCanvas.height = video.videoHeight;
+  }
+
+  const W = canvas.width;
+  const H = canvas.height;
+  if (!W || !H) return;
+
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -W, 0, W, H);
+  ctx.restore();
+
+  if (lastLandmarks.length === 33) {
+    ctx.lineWidth   = 3;
+    ctx.strokeStyle = "rgba(79,142,247,0.85)";
+    for (const [a, b] of POSE_CONNECTIONS) {
+      const pa = lastLandmarks[a], pb = lastLandmarks[b];
+      if (pa.v < 0.3 || pb.v < 0.3) continue;
+      ctx.beginPath();
+      ctx.moveTo((1 - pa.x) * W, pa.y * H);
+      ctx.lineTo((1 - pb.x) * W, pb.y * H);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 33; i++) {
+      const p = lastLandmarks[i];
+      if (p.v < 0.3) continue;
+      const r = HIGHLIGHT_JOINTS.has(i) ? 7 : 4;
+      ctx.beginPath();
+      ctx.arc((1 - p.x) * W, p.y * H, r, 0, Math.PI * 2);
+      ctx.fillStyle = HIGHLIGHT_JOINTS.has(i) ? "#23d18b" : "#fff";
+      ctx.fill();
+    }
+  }
+
+  if (wsReady && ws && ws.readyState === WebSocket.OPEN) {
+    wsReady = false;  
+    ws._sendTs = performance.now();
+
+    const capCtx = frameCapCanvas.getContext("2d");
+    capCtx.drawImage(video, 0, 0);
+    frameCapCanvas.toBlob((blob) => {
+      if (!blob || !ws || ws.readyState !== WebSocket.OPEN) { wsReady = true; return; }
+      blob.arrayBuffer().then(buf => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(buf);
+        } else {
+          wsReady = true;
+        }
+      });
+    }, "image/jpeg", 0.7);
+  }
+}
+
+async function startSession() {
+  const granted = await requestCamera();
+  if (!granted) return;
+
+  try {
+    const r = await fetch(`${HTTP_API}/start_session/${userId}`, { method: "POST" });
+    const d = await r.json();
+    toast("✅ " + d.message);
+  } catch {
+    toast("Could not reach the server.");
+    stopCamera(); return;
+  }
+
+  try {
+    await openWebSocket();
+    toast("WebSocket connected!");
+  } catch {
+    toast("WebSocket connection failed.");
+    stopCamera(); return;
+  }
+
+  active = true;
+  document.getElementById("btn-start").disabled = true;
+  document.getElementById("btn-stop").disabled  = false;
+  document.getElementById("status-dot").classList.add("live");
+  document.getElementById("cam-banner").style.display = "none";
+
+  lastLandmarks = [];
+  drawLoop();  
+}
+
+async function stopSession() {
+  active = false;
+  cancelAnimationFrame(rafId);
+  closeWebSocket();
+  stopCamera();
+  lastLandmarks = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  try {
+    const r = await fetch(`${HTTP_API}/stop_session/${userId}`, { method: "POST" });
+    const d = await r.json();
+    toast("💾 " + d.message);
+  } catch {
+    toast("❌ Error saving session.");
+  }
+
+  document.getElementById("btn-start").disabled = false;
+  document.getElementById("btn-stop").disabled  = true;
+  document.getElementById("status-dot").classList.remove("live");
+
+  setTimeout(loadProgress, 700);
+}
+
+async function loadProgress() {
+  if (!userId) return;
+  try {
+    const r = await fetch(`${HTTP_API}/progress/${userId}`);
+    if (r.status === 404) {
+      document.getElementById("p-reps").textContent = "0";
+      document.getElementById("p-dur").textContent  = "0";
+      document.getElementById("p-sess").textContent = "0";
+      document.getElementById("history-list").innerHTML =
+        '<p style="color:var(--muted);font-size:.85rem">No history yet.</p>';
+      return;
+    }
+    const d    = await r.json();
+    const hist = d.session_history ?? [];
+
+    document.getElementById("p-reps").textContent = d.total_reps   ?? 0;
+    document.getElementById("p-dur").textContent  = Math.round(d.total_duration ?? 0);
+    document.getElementById("p-sess").textContent = hist.length;
+
+    const list = document.getElementById("history-list");
+    if (!hist.length) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:.85rem">No history yet.</p>';
+    } else {
+      list.innerHTML = [...hist].reverse().map(s => {
+        const dt  = new Date(s.date);
+        const fmt = dt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+        return `<div class="hi">
+          <div><div class="reps">${s.reps} reps</div><div class="date">${fmt}</div></div>
+          <div class="dur">${Math.round(s.duration)}s</div>
+        </div>`;
+      }).join("");
+    }
+  } catch {
+    toast("Could not load progress.");
+  }
+}
+
+function resetUI() {
+  active = false;
+  cancelAnimationFrame(rafId);
+  closeWebSocket();
+  stopCamera();
+  lastLandmarks = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById("live-reps").textContent = "—";
+  document.getElementById("live-time").textContent = "—";
+  document.getElementById("feedback-box").textContent = "Start a session to begin exercising.";
+  document.getElementById("p-reps").textContent = "—";
+  document.getElementById("p-dur").textContent  = "—";
+  document.getElementById("p-sess").textContent = "—";
+  document.getElementById("history-list").innerHTML =
+    '<p style="color:var(--muted);font-size:.85rem">No history yet.</p>';
+  document.getElementById("status-dot").classList.remove("live");
+  document.getElementById("btn-start").disabled = false;
+  document.getElementById("btn-stop").disabled  = true;
+  updateWsBadge(null);
+}
+
+document.getElementById("uid-input")
+  .addEventListener("keydown", e => { if (e.key === "Enter") enterApp(); });
+</script>
+</body>
+</html>
